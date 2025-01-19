@@ -1,6 +1,9 @@
 ---
-title: PowerDNS-Admin
+title: Integrate with PowerDNS-Admin
+sidebar_label: PowerDNS-Admin
 ---
+
+# PowerDNS-Admin
 
 <span class="badge badge--secondary">Support level: Community</span>
 
@@ -12,19 +15,19 @@ title: PowerDNS-Admin
 
 ## Preparation
 
-The following placeholders will be used:
+The following placeholders are used in this guide:
 
--   `pdns-admin.company` is the FQDN of the PowerDNS-Admin install.
--   `authentik.company` is the FQDN of the authentik install.
+- `pdns-admin.company` is the FQDN of the PowerDNS-Admin installation.
+- `authentik.company` is the FQDN of the authentik installation.
 
 Create a SAML provider with the following parameters:
 
--   ACS URL: `https://pdns-admin.company/saml/authorized`
--   Issuer: `https://authentik.company`
--   Service Provider Binding: `Post`
--   Audience: `pdns-admin`
--   Signing Keypair: Select any certificate you have.
--   Property mappings: Select all Managed mappings.
+- ACS URL: `https://pdns-admin.company/saml/authorized`
+- Issuer: `https://authentik.company`
+- Service Provider Binding: `Post`
+- Audience: `pdns-admin`
+- Signing Keypair: Select any certificate you have.
+- Property mappings: Select all Managed mappings.
 
 You can of course use a custom signing certificate, and adjust durations.
 
@@ -60,7 +63,6 @@ You must mount the certificate selected in authentik as a file in the Docker con
 ### docker-compose
 
 ```yaml
-version: "3.3"
 services:
     powerdns-admin:
         image: powerdnsadmin/pda-legacy:latest

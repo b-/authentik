@@ -5,20 +5,24 @@ import {
     TITLE_DEFAULT,
 } from "@goauthentik/common/constants";
 import { globalAK } from "@goauthentik/common/global";
+import { purify } from "@goauthentik/common/purify";
 import { configureSentry } from "@goauthentik/common/sentry";
 import { first } from "@goauthentik/common/utils";
 import { WebsocketClient } from "@goauthentik/common/ws";
 import { Interface } from "@goauthentik/elements/Interface";
 import "@goauthentik/elements/LoadingOverlay";
 import "@goauthentik/elements/ak-locale-context";
+import { DefaultBrand } from "@goauthentik/elements/sidebar/SidebarBrand";
+import { themeImage } from "@goauthentik/elements/utils/images";
 import "@goauthentik/flow/sources/apple/AppleLoginInit";
 import "@goauthentik/flow/sources/plex/PlexLoginInit";
 import "@goauthentik/flow/stages/FlowErrorStage";
+import "@goauthentik/flow/stages/FlowFrameStage";
 import "@goauthentik/flow/stages/RedirectStage";
-import { StageHost } from "@goauthentik/flow/stages/base";
+import { StageHost, SubmitOptions } from "@goauthentik/flow/stages/base";
 
 import { msg } from "@lit/localize";
-import { CSSResult, TemplateResult, css, html, nothing } from "lit";
+import { CSSResult, PropertyValues, TemplateResult, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { until } from "lit/directives/until.js";
@@ -32,9 +36,10 @@ import PFTitle from "@patternfly/patternfly/components/Title/title.css";
 import PFBase from "@patternfly/patternfly/patternfly-base.css";
 
 import {
-    ChallengeChoices,
+    CapabilitiesEnum,
     ChallengeTypes,
     ContextualFlowInfo,
+    FetchError,
     FlowChallengeResponseRequest,
     FlowErrorChallenge,
     FlowLayoutEnum,
@@ -72,24 +77,11 @@ export class FlowExecutor extends Interface implements StageHost {
     @state()
     inspectorOpen = false;
 
-    _flowInfo?: ContextualFlowInfo;
+    @state()
+    inspectorAvailable = false;
 
     @state()
-    set flowInfo(value: ContextualFlowInfo | undefined) {
-        this._flowInfo = value;
-        if (!value) {
-            return;
-        }
-        this.shadowRoot
-            ?.querySelectorAll<HTMLDivElement>(".pf-c-background-image")
-            .forEach((bg) => {
-                bg.style.setProperty("--ak-flow-background", `url('${value?.background}')`);
-            });
-    }
-
-    get flowInfo(): ContextualFlowInfo | undefined {
-        return this._flowInfo;
-    }
+    flowInfo?: ContextualFlowInfo;
 
     ws: WebsocketClient;
 
@@ -171,17 +163,40 @@ export class FlowExecutor extends Interface implements StageHost {
                 padding: 0 2rem;
                 max-height: inherit;
             }
+            .inspector-toggle {
+                position: absolute;
+                top: 1rem;
+                right: 1rem;
+                z-index: 100;
+            }
         `);
     }
 
     constructor() {
         super();
         this.ws = new WebsocketClient();
-        if (window.location.search.includes("inspector")) {
-            this.inspectorOpen = !this.inspectorOpen;
+        const inspector = new URL(window.location.toString()).searchParams.get("inspector");
+        if (inspector === "" || inspector === "open") {
+            this.inspectorOpen = true;
+            this.inspectorAvailable = true;
+        } else if (inspector === "available") {
+            this.inspectorAvailable = true;
         }
         this.addEventListener(EVENT_FLOW_INSPECTOR_TOGGLE, () => {
             this.inspectorOpen = !this.inspectorOpen;
+        });
+        window.addEventListener("message", (event) => {
+            const msg: {
+                source?: string;
+                context?: string;
+                message: string;
+            } = event.data;
+            if (msg.source !== "goauthentik.io" || msg.context !== "flow-executor") {
+                return;
+            }
+            if (msg.message === "submit") {
+                this.submit({} as FlowChallengeResponseRequest);
+            }
         });
     }
 
@@ -189,12 +204,17 @@ export class FlowExecutor extends Interface implements StageHost {
         return globalAK()?.brand.uiTheme || UiThemeEnum.Automatic;
     }
 
-    async submit(payload?: FlowChallengeResponseRequest): Promise<boolean> {
+    async submit(
+        payload?: FlowChallengeResponseRequest,
+        options?: SubmitOptions,
+    ): Promise<boolean> {
         if (!payload) return Promise.reject();
         if (!this.challenge) return Promise.reject();
-        // @ts-ignore
+        // @ts-expect-error
         payload.component = this.challenge.component;
-        this.loading = true;
+        if (!options?.invisible) {
+            this.loading = true;
+        }
         try {
             const challenge = await new FlowsApi(DEFAULT_CONFIG).flowsExecutorSolve({
                 flowSlug: this.flowSlug,
@@ -213,12 +233,9 @@ export class FlowExecutor extends Interface implements StageHost {
             if (this.challenge.flowInfo) {
                 this.flowInfo = this.challenge.flowInfo;
             }
-            if (this.challenge.responseErrors) {
-                return false;
-            }
-            return true;
+            return !this.challenge.responseErrors;
         } catch (exc: unknown) {
-            this.errorMessage(exc as Error | ResponseError);
+            this.errorMessage(exc as Error | ResponseError | FetchError);
             return false;
         } finally {
             this.loading = false;
@@ -227,6 +244,9 @@ export class FlowExecutor extends Interface implements StageHost {
 
     async firstUpdated(): Promise<void> {
         configureSentry();
+        if (this.config?.capabilities.includes(CapabilitiesEnum.CanDebug)) {
+            this.inspectorAvailable = true;
+        }
         this.loading = true;
         try {
             const challenge = await new FlowsApi(DEFAULT_CONFIG).flowsExecutorGet({
@@ -247,21 +267,22 @@ export class FlowExecutor extends Interface implements StageHost {
             }
         } catch (exc: unknown) {
             // Catch JSON or Update errors
-            this.errorMessage(exc as Error | ResponseError);
+            this.errorMessage(exc as Error | ResponseError | FetchError);
         } finally {
             this.loading = false;
         }
     }
 
-    async errorMessage(error: Error | ResponseError): Promise<void> {
+    async errorMessage(error: Error | ResponseError | FetchError): Promise<void> {
         let body = "";
-        if (error instanceof ResponseError) {
+        if (error instanceof FetchError) {
+            body = msg("Request failed. Please try again later.");
+        } else if (error instanceof ResponseError) {
             body = await error.response.text();
         } else if (error instanceof Error) {
             body = error.message;
         }
         const challenge: FlowErrorChallenge = {
-            type: ChallengeChoices.Native,
             component: "ak-stage-flow-error",
             error: body,
             requestId: "",
@@ -269,7 +290,28 @@ export class FlowExecutor extends Interface implements StageHost {
         this.challenge = challenge as ChallengeTypes;
     }
 
-    async renderChallengeNativeElement(): Promise<TemplateResult> {
+    setShadowStyles(value: ContextualFlowInfo) {
+        if (!value) {
+            return;
+        }
+        this.shadowRoot
+            ?.querySelectorAll<HTMLDivElement>(".pf-c-background-image")
+            .forEach((bg) => {
+                bg.style.setProperty("--ak-flow-background", `url('${value?.background}')`);
+            });
+    }
+
+    // DOM post-processing has to happen after the render.
+    updated(changedProperties: PropertyValues<this>) {
+        if (changedProperties.has("flowInfo") && this.flowInfo !== undefined) {
+            this.setShadowStyles(this.flowInfo);
+        }
+    }
+
+    async renderChallenge(): Promise<TemplateResult> {
+        if (!this.challenge) {
+            return html`<ak-empty-state loading> </ak-empty-state>`;
+        }
         switch (this.challenge?.component) {
             case "ak-stage-access-denied":
                 await import("@goauthentik/flow/stages/access_denied/AccessDeniedStage");
@@ -394,61 +436,45 @@ export class FlowExecutor extends Interface implements StageHost {
                     .host=${this as StageHost}
                     .challenge=${this.challenge}
                 ></ak-flow-provider-oauth2-code-finish>`;
+            case "ak-stage-session-end":
+                await import("@goauthentik/flow/providers/SessionEnd");
+                return html`<ak-stage-session-end
+                    .host=${this as StageHost}
+                    .challenge=${this.challenge}
+                ></ak-stage-session-end>`;
             // Internal stages
             case "ak-stage-flow-error":
                 return html`<ak-stage-flow-error
                     .host=${this as StageHost}
                     .challenge=${this.challenge}
                 ></ak-stage-flow-error>`;
-            default:
-                return html`Invalid native challenge element`;
-        }
-    }
-
-    async renderChallenge(): Promise<TemplateResult> {
-        if (!this.challenge) {
-            return html``;
-        }
-        switch (this.challenge.type) {
-            case ChallengeChoices.Redirect:
+            case "xak-flow-redirect":
                 return html`<ak-stage-redirect
                     .host=${this as StageHost}
                     .challenge=${this.challenge}
                     ?promptUser=${this.inspectorOpen}
                 >
                 </ak-stage-redirect>`;
-            case ChallengeChoices.Shell:
+            case "xak-flow-shell":
                 return html`${unsafeHTML((this.challenge as ShellChallenge).body)}`;
-            case ChallengeChoices.Native:
-                return await this.renderChallengeNativeElement();
+            case "xak-flow-frame":
+                return html`<xak-flow-frame
+                    .host=${this as StageHost}
+                    .challenge=${this.challenge}
+                ></xak-flow-frame>`;
             default:
-                console.debug(`authentik/flows: unexpected data type ${this.challenge.type}`);
-                break;
+                return html`Invalid native challenge element`;
         }
-        return html``;
     }
 
-    renderChallengeWrapper(): TemplateResult {
-        const logo = html`<div class="pf-c-login__main-header pf-c-brand ak-brand">
-            <img src="${first(this.brand?.brandingLogo, "")}" alt="authentik Logo" />
-        </div>`;
-        if (!this.challenge) {
-            return html`${logo}<ak-empty-state ?loading=${true} header=${msg("Loading")}>
-                </ak-empty-state>`;
-        }
-        return html`
-            ${this.loading ? html`<ak-loading-overlay></ak-loading-overlay>` : nothing} ${logo}
-            ${until(this.renderChallenge())}
-        `;
-    }
-
-    async renderInspector(): Promise<TemplateResult> {
+    async renderInspector() {
         if (!this.inspectorOpen) {
-            return html``;
+            return nothing;
         }
         await import("@goauthentik/flow/FlowInspector");
         return html`<ak-flow-inspector
             class="pf-c-drawer__panel pf-m-width-33"
+            .flowSlug=${this.flowSlug}
         ></ak-flow-inspector>`;
     }
 
@@ -484,43 +510,70 @@ export class FlowExecutor extends Interface implements StageHost {
                                 <div class="pf-c-login ${this.getLayout()}">
                                     <div class="${this.getLayoutClass()}">
                                         <div class="pf-c-login__main">
-                                            ${this.renderChallengeWrapper()}
+                                            ${this.loading && this.challenge
+                                                ? html`<ak-loading-overlay></ak-loading-overlay>`
+                                                : nothing}
+                                            <div
+                                                class="pf-c-login__main-header pf-c-brand ak-brand"
+                                            >
+                                                <img
+                                                    src="${themeImage(
+                                                        first(
+                                                            this.brand?.brandingLogo,
+                                                            globalAK()?.brand.brandingLogo,
+                                                            DefaultBrand.brandingLogo,
+                                                        ),
+                                                    )}"
+                                                    alt="${msg("authentik Logo")}"
+                                                />
+                                            </div>
+                                            ${until(this.renderChallenge())}
                                         </div>
                                         <footer class="pf-c-login__footer">
                                             <ul class="pf-c-list pf-m-inline">
                                                 ${this.brand?.uiFooterLinks?.map((link) => {
+                                                    if (link.href) {
+                                                        return html`${purify(
+                                                            html`<li>
+                                                                <a href="${link.href}"
+                                                                    >${link.name}</a
+                                                                >
+                                                            </li>`,
+                                                        )}`;
+                                                    }
                                                     return html`<li>
-                                                        <a href="${link.href || ""}"
-                                                            >${link.name}</a
-                                                        >
+                                                        <span>${link.name}</span>
                                                     </li>`;
                                                 })}
                                                 <li>
-                                                    <a
-                                                        href="https://goauthentik.io?utm_source=authentik&amp;utm_medium=flow"
-                                                        >${msg("Powered by authentik")}</a
-                                                    >
+                                                    <span>${msg("Powered by authentik")}</span>
                                                 </li>
-                                                ${this.flowInfo?.background?.startsWith("/static")
-                                                    ? html`
-                                                          <li>
-                                                              <a
-                                                                  href="https://unsplash.com/@theforestbirds"
-                                                                  >${msg("Background image")}</a
-                                                              >
-                                                          </li>
-                                                      `
-                                                    : html``}
                                             </ul>
                                         </footer>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                        ${(this.inspectorAvailable ?? !this.inspectorOpen)
+                            ? html`<button
+                                  class="inspector-toggle pf-c-button pf-m-primary"
+                                  @click=${() => {
+                                      this.inspectorOpen = true;
+                                  }}
+                              >
+                                  <i class="fa fa-search-plus" aria-hidden="true"></i>
+                              </button>`
+                            : nothing}
                         ${until(this.renderInspector())}
                     </div>
                 </div>
             </div>
         </ak-locale-context>`;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-flow-executor": FlowExecutor;
     }
 }

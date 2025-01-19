@@ -1,7 +1,5 @@
 """RAC Provider API Views"""
 
-from typing import Optional
-
 from django.core.cache import cache
 from django.db.models import QuerySet
 from django.urls import reverse
@@ -10,11 +8,11 @@ from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_sche
 from rest_framework.fields import SerializerMethodField
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.serializers import ModelSerializer
 from rest_framework.viewsets import ModelViewSet
 from structlog.stdlib import get_logger
 
 from authentik.core.api.used_by import UsedByMixin
+from authentik.core.api.utils import ModelSerializer
 from authentik.core.models import Provider
 from authentik.enterprise.api import EnterpriseRequiredMixin
 from authentik.enterprise.providers.rac.api.providers import RACProviderSerializer
@@ -36,11 +34,11 @@ class EndpointSerializer(EnterpriseRequiredMixin, ModelSerializer):
     provider_obj = RACProviderSerializer(source="provider", read_only=True)
     launch_url = SerializerMethodField()
 
-    def get_launch_url(self, endpoint: Endpoint) -> Optional[str]:
+    def get_launch_url(self, endpoint: Endpoint) -> str | None:
         """Build actual launch URL (the provider itself does not have one, just
         individual endpoints)"""
         try:
-            # pylint: disable=no-member
+
             return reverse(
                 "authentik_providers_rac:start",
                 kwargs={"app": endpoint.provider.application.slug, "endpoint": endpoint.pk},

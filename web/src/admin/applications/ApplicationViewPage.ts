@@ -1,12 +1,13 @@
 import "@goauthentik/admin/applications/ApplicationAuthorizeChart";
 import "@goauthentik/admin/applications/ApplicationCheckAccessForm";
 import "@goauthentik/admin/applications/ApplicationForm";
+import "@goauthentik/admin/applications/entitlements/ApplicationEntitlementPage";
 import "@goauthentik/admin/policies/BoundPoliciesList";
-import { PFSize } from "@goauthentik/app/elements/Spinner";
-import "@goauthentik/app/elements/rbac/ObjectPermissionsPage";
+import "@goauthentik/admin/rbac/ObjectPermissionsPage";
 import { DEFAULT_CONFIG } from "@goauthentik/common/api/config";
-import "@goauthentik/components/ak-app-icon";
+import { PFSize } from "@goauthentik/common/enums.js";
 import "@goauthentik/components/events/ObjectChangelog";
+import "@goauthentik/elements/AppIcon";
 import { AKElement } from "@goauthentik/elements/Base";
 import "@goauthentik/elements/EmptyState";
 import "@goauthentik/elements/PageHeader";
@@ -14,7 +15,7 @@ import "@goauthentik/elements/Tabs";
 import "@goauthentik/elements/buttons/SpinnerButton";
 
 import { msg } from "@lit/localize";
-import { CSSResult, TemplateResult, html } from "lit";
+import { CSSResult, PropertyValues, TemplateResult, html } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 
@@ -37,37 +38,11 @@ import {
 
 @customElement("ak-application-view")
 export class ApplicationViewPage extends AKElement {
-    @property()
-    set applicationSlug(value: string) {
-        new CoreApi(DEFAULT_CONFIG)
-            .coreApplicationsRetrieve({
-                slug: value,
-            })
-            .then((app) => {
-                this.application = app;
-                if (
-                    app.providerObj &&
-                    [
-                        "authentik_providers_proxy.proxyprovider",
-                        "authentik_providers_ldap.ldapprovider",
-                    ].includes(app.providerObj.metaModelName)
-                ) {
-                    new OutpostsApi(DEFAULT_CONFIG)
-                        .outpostsInstancesList({
-                            providersByPk: [app.provider || 0],
-                            pageSize: 1,
-                        })
-                        .then((outposts) => {
-                            if (outposts.pagination.count < 1) {
-                                this.missingOutpost = true;
-                            }
-                        });
-                }
-            });
-    }
+    @property({ type: String })
+    applicationSlug?: string;
 
-    @property({ attribute: false })
-    application!: Application;
+    @state()
+    application?: Application;
 
     @state()
     missingOutpost = false;
@@ -86,6 +61,40 @@ export class ApplicationViewPage extends AKElement {
         ];
     }
 
+    fetchIsMissingOutpost(providersByPk: Array<number>) {
+        new OutpostsApi(DEFAULT_CONFIG)
+            .outpostsInstancesList({
+                providersByPk,
+                pageSize: 1,
+            })
+            .then((outposts) => {
+                if (outposts.pagination.count < 1) {
+                    this.missingOutpost = true;
+                }
+            });
+    }
+
+    fetchApplication(slug: string) {
+        new CoreApi(DEFAULT_CONFIG).coreApplicationsRetrieve({ slug }).then((app) => {
+            this.application = app;
+            if (
+                app.providerObj &&
+                [
+                    RbacPermissionsAssignedByUsersListModelEnum.ProvidersProxyProxyprovider.toString(),
+                    RbacPermissionsAssignedByUsersListModelEnum.ProvidersLdapLdapprovider.toString(),
+                ].includes(app.providerObj.metaModelName)
+            ) {
+                this.fetchIsMissingOutpost([app.provider || 0]);
+            }
+        });
+    }
+
+    willUpdate(changedProperties: PropertyValues<this>) {
+        if (changedProperties.has("applicationSlug") && this.applicationSlug) {
+            this.fetchApplication(this.applicationSlug);
+        }
+    }
+
     render(): TemplateResult {
         return html`<ak-page-header
                 header=${this.application?.name || msg("Loading")}
@@ -94,8 +103,9 @@ export class ApplicationViewPage extends AKElement {
             >
                 <ak-app-icon
                     size=${PFSize.Medium}
+                    name=${ifDefined(this.application?.name || undefined)}
+                    icon=${ifDefined(this.application?.metaIcon || undefined)}
                     slot="icon"
-                    .app=${this.application}
                 ></ak-app-icon>
             </ak-page-header>
             ${this.renderApp()}`;
@@ -293,6 +303,28 @@ export class ApplicationViewPage extends AKElement {
                 </div>
             </section>
             <section
+                slot="page-app-entitlements"
+                data-tab-title="${msg("Application entitlements")}"
+            >
+                <div slot="header" class="pf-c-banner pf-m-info">
+                    ${msg("Application entitlements are in preview.")}
+                    <a href="mailto:hello+feature/app-ent@goauthentik.io"
+                        >${msg("Send us feedback!")}</a
+                    >
+                </div>
+                <div class="pf-c-page__main-section pf-m-no-padding-mobile">
+                    <div class="pf-c-card">
+                        <div class="pf-c-card__title">
+                            ${msg(
+                                "These entitlements can be used to configure user access in this application.",
+                            )}
+                        </div>
+                        <ak-application-entitlements-list .app=${this.application.pk}>
+                        </ak-application-entitlements-list>
+                    </div>
+                </div>
+            </section>
+            <section
                 slot="page-policy-bindings"
                 data-tab-title="${msg("Policy / Group / User Bindings")}"
                 class="pf-c-page__main-section pf-m-no-padding-mobile"
@@ -312,5 +344,11 @@ export class ApplicationViewPage extends AKElement {
                 objectPk=${this.application.pk}
             ></ak-rbac-object-permission-page>
         </ak-tabs>`;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-application-view": ApplicationViewPage;
     }
 }

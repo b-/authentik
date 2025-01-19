@@ -1,6 +1,9 @@
 ---
-title: Harbor
+title: Integrate with Harbor
+sidebar_label: Harbor
 ---
+
+# Harbor
 
 <span class="badge badge--secondary">Support level: Community</span>
 
@@ -12,17 +15,17 @@ title: Harbor
 
 ## Preparation
 
-The following placeholders will be used:
+The following placeholders are used in this guide:
 
--   `harbor.company` is the FQDN of the Harbor install.
--   `authentik.company` is the FQDN of the authentik install.
+- `harbor.company` is the FQDN of the Harbor installation.
+- `authentik.company` is the FQDN of the authentik installation.
 
 Create an OAuth2/OpenID provider with the following parameters:
 
--   Client Type: `Confidential`
--   Redirect URIs: `https://harbor.company/c/oidc/callback`
--   Scopes: OpenID, Email and Profile
--   Signing Key: Select any available key
+- Client Type: `Confidential`
+- Redirect URIs: `https://harbor.company/c/oidc/callback`
+- Scopes: OpenID, Email and Profile
+- Signing Key: Select any available key
 
 Note the Client ID and Client Secret values. Create an application, using the provider you've created above.
 

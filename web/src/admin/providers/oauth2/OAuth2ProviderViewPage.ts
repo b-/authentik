@@ -1,11 +1,10 @@
 import "@goauthentik/admin/providers/RelatedApplicationButton";
 import "@goauthentik/admin/providers/oauth2/OAuth2ProviderForm";
-import renderDescriptionList from "@goauthentik/app/components/DescriptionList";
 import { DEFAULT_CONFIG } from "@goauthentik/common/api/config";
 import { EVENT_REFRESH } from "@goauthentik/common/constants";
-import { convertToTitle } from "@goauthentik/common/utils";
+import renderDescriptionList from "@goauthentik/components/DescriptionList";
 import "@goauthentik/components/events/ObjectChangelog";
-import MDProviderOAuth2 from "@goauthentik/docs/providers/oauth2/index.md";
+import MDProviderOAuth2 from "@goauthentik/docs/add-secure-apps/providers/oauth2/index.md";
 import { AKElement } from "@goauthentik/elements/Base";
 import "@goauthentik/elements/CodeMirror";
 import "@goauthentik/elements/EmptyState";
@@ -31,6 +30,7 @@ import PFGrid from "@patternfly/patternfly/layouts/Grid/grid.css";
 import PFBase from "@patternfly/patternfly/patternfly-base.css";
 
 import {
+    ClientTypeEnum,
     CoreApi,
     CoreUsersListRequest,
     OAuth2Provider,
@@ -40,6 +40,18 @@ import {
     RbacPermissionsAssignedByUsersListModelEnum,
     User,
 } from "@goauthentik/api";
+
+export function TypeToLabel(type?: ClientTypeEnum): string {
+    if (!type) return "";
+    switch (type) {
+        case ClientTypeEnum.Confidential:
+            return msg("Confidential");
+        case ClientTypeEnum.Public:
+            return msg("Public");
+        case ClientTypeEnum.UnknownDefaultOpenApi:
+            return msg("Unknown type");
+    }
+}
 
 @customElement("ak-provider-oauth2-view")
 export class OAuth2ProviderViewPage extends AKElement {
@@ -163,7 +175,7 @@ export class OAuth2ProviderViewPage extends AKElement {
                   </div>`}
             <div class="pf-c-page__main-section pf-m-no-padding-mobile pf-l-grid pf-m-gutter">
                 <div
-                    class="pf-c-card pf-l-grid__item pf-l-grid__item pf-m-12-col pf-m-3-col-on-xl pf-m-3-col-on-2xl"
+                    class="pf-c-card pf-l-grid__item pf-l-grid__item pf-m-12-col pf-m-4-col-on-xl pf-m-4-col-on-2xl"
                 >
                     <div class="pf-c-card__body">
                         <dl class="pf-c-description-list">
@@ -198,7 +210,7 @@ export class OAuth2ProviderViewPage extends AKElement {
                                 </dt>
                                 <dd class="pf-c-description-list__description">
                                     <div class="pf-c-description-list__text">
-                                        ${convertToTitle(this.provider.clientType || "")}
+                                        ${TypeToLabel(this.provider.clientType)}
                                     </div>
                                 </dd>
                             </div>
@@ -222,7 +234,11 @@ export class OAuth2ProviderViewPage extends AKElement {
                                 </dt>
                                 <dd class="pf-c-description-list__description">
                                     <div class="pf-c-description-list__text">
-                                        ${this.provider.redirectUris}
+                                        <ul>
+                                            ${this.provider.redirectUris.map((ru) => {
+                                                return html`<li>${ru.matchingMode}: ${ru.url}</li>`;
+                                            })}
+                                        </ul>
                                     </div>
                                 </dd>
                             </div>
@@ -243,7 +259,7 @@ export class OAuth2ProviderViewPage extends AKElement {
                         </ak-forms-modal>
                     </div>
                 </div>
-                <div class="pf-c-card pf-l-grid__item pf-m-7-col">
+                <div class="pf-c-card pf-l-grid__item pf-m-8-col">
                     <div class="pf-c-card__body">
                         <form class="pf-c-form">
                             <div class="pf-c-form__group">
@@ -352,6 +368,8 @@ export class OAuth2ProviderViewPage extends AKElement {
                                 },
                             ]}
                             .md=${MDProviderOAuth2}
+                            meta="providers/oauth2/index.md"
+                            ;
                         ></ak-markdown>
                     </div>
                 </div>
@@ -418,5 +436,11 @@ export class OAuth2ProviderViewPage extends AKElement {
                 </div>
             </div>
         </div>`;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-provider-oauth2-view": OAuth2ProviderViewPage;
     }
 }

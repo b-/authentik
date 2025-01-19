@@ -40,6 +40,7 @@ export class AuthenticatorStaticStage extends BaseStage<
                     columns: 2;
                     -webkit-columns: 2;
                     -moz-columns: 2;
+                    column-width: 1em;
                     margin-left: var(--pf-global--spacer--xs);
                 }
                 ul li {
@@ -53,8 +54,7 @@ export class AuthenticatorStaticStage extends BaseStage<
 
     render(): TemplateResult {
         if (!this.challenge) {
-            return html`<ak-empty-state ?loading="${true}" header=${msg("Loading")}>
-            </ak-empty-state>`;
+            return html`<ak-empty-state loading> </ak-empty-state>`;
         }
         return html`<header class="pf-c-login__main-header">
                 <h1 class="pf-c-title pf-m-3xl">${this.challenge.flowInfo?.title}</h1>
@@ -96,5 +96,11 @@ export class AuthenticatorStaticStage extends BaseStage<
             <footer class="pf-c-login__main-footer">
                 <ul class="pf-c-login__main-footer-links"></ul>
             </footer>`;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-stage-authenticator-static": AuthenticatorStaticStage;
     }
 }

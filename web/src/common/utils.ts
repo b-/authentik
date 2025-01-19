@@ -25,10 +25,10 @@ export function convertToSlug(text: string): string {
         .replace(/[^\w-]+/g, "");
 }
 
-export function convertToTitle(text: string): string {
-    return text.replace(/\w\S*/g, function (txt) {
-        return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
-    });
+export function isSlug(text: string): boolean {
+    const lowered = text.toLowerCase();
+    const forbidden = /([^\w-]|\s)/.test(lowered);
+    return lowered === text && !forbidden;
 }
 
 /**
@@ -84,14 +84,6 @@ export function first<T>(...args: Array<T | undefined | null>): T {
     throw new SentryIgnoredError(`No compatible arg given: ${args}`);
 }
 
-export function hexEncode(buf: Uint8Array): string {
-    return Array.from(buf)
-        .map(function (x) {
-            return ("0" + x.toString(16)).substr(-2);
-        })
-        .join("");
-}
-
 // Taken from python's string module
 export const ascii_lowercase = "abcdefghijklmnopqrstuvwxyz";
 export const ascii_uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -125,6 +117,21 @@ export function dateTimeLocal(date: Date): string {
     return `${parts[0]}:${parts[1]}`;
 }
 
+export function dateToUTC(date: Date): Date {
+    // Sigh...so our API is UTC/can take TZ info in the ISO format as it should.
+    // datetime-local fields (which is almost the only date-time input we use)
+    // can return its value as a UTC timestamp...however the generated API client
+    // _requires_ a Date object, only to then convert it to an ISO string anyways
+    // JS Dates don't include timezone info in the ISO string, so that just sends
+    // the local time as UTC...which is wrong
+    // Instead we have to do this, convert the given date to a UTC timestamp,
+    // then subtract the timezone offset to create an "invalid" date (correct time&date)
+    // but it still "thinks" it's in local TZ
+    const timestamp = date.getTime();
+    const offset = -1 * (new Date().getTimezoneOffset() * 60000);
+    return new Date(timestamp - offset);
+}
+
 // Lit is extremely well-typed with regard to CSS, and Storybook's `build` does not currently have a
 // coherent way of importing CSS-as-text into CSSStyleSheet. It works well when Storybook is running
 // in `dev,` but in `build` it fails. Storied components will have to map their textual CSS imports
@@ -137,7 +144,7 @@ const isCSSResult = (v: unknown): v is CSSResult =>
 
 // prettier-ignore
 export const _adaptCSS = (sheet: AdaptableStylesheet): CSSStyleSheet =>
-    (typeof sheet === "string" ? css([sheet] as unknown as TemplateStringsArray, ...[]).styleSheet
+    (typeof sheet === "string" ? css([sheet] as unknown as TemplateStringsArray, []).styleSheet
         : isCSSResult(sheet) ? sheet.styleSheet
         : sheet) as CSSStyleSheet;
 

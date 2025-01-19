@@ -1,19 +1,19 @@
 import "@goauthentik/admin/providers/RelatedApplicationButton";
 import "@goauthentik/admin/providers/proxy/ProxyProviderForm";
-import "@goauthentik/app/elements/rbac/ObjectPermissionsPage";
+import "@goauthentik/admin/rbac/ObjectPermissionsPage";
 import { DEFAULT_CONFIG } from "@goauthentik/common/api/config";
 import { EVENT_REFRESH } from "@goauthentik/common/constants";
 import { convertToSlug } from "@goauthentik/common/utils";
 import "@goauthentik/components/ak-status-label";
 import "@goauthentik/components/events/ObjectChangelog";
-import MDCaddyStandalone from "@goauthentik/docs/providers/proxy/_caddy_standalone.md";
-import MDNginxIngress from "@goauthentik/docs/providers/proxy/_nginx_ingress.md";
-import MDNginxPM from "@goauthentik/docs/providers/proxy/_nginx_proxy_manager.md";
-import MDNginxStandalone from "@goauthentik/docs/providers/proxy/_nginx_standalone.md";
-import MDTraefikCompose from "@goauthentik/docs/providers/proxy/_traefik_compose.md";
-import MDTraefikIngress from "@goauthentik/docs/providers/proxy/_traefik_ingress.md";
-import MDTraefikStandalone from "@goauthentik/docs/providers/proxy/_traefik_standalone.md";
-import MDHeaderAuthentication from "@goauthentik/docs/providers/proxy/header_authentication.md";
+import MDCaddyStandalone from "@goauthentik/docs/add-secure-apps/providers/proxy/_caddy_standalone.md";
+import MDNginxIngress from "@goauthentik/docs/add-secure-apps/providers/proxy/_nginx_ingress.md";
+import MDNginxPM from "@goauthentik/docs/add-secure-apps/providers/proxy/_nginx_proxy_manager.md";
+import MDNginxStandalone from "@goauthentik/docs/add-secure-apps/providers/proxy/_nginx_standalone.md";
+import MDTraefikCompose from "@goauthentik/docs/add-secure-apps/providers/proxy/_traefik_compose.md";
+import MDTraefikIngress from "@goauthentik/docs/add-secure-apps/providers/proxy/_traefik_ingress.md";
+import MDTraefikStandalone from "@goauthentik/docs/add-secure-apps/providers/proxy/_traefik_standalone.md";
+import MDHeaderAuthentication from "@goauthentik/docs/add-secure-apps/providers/proxy/header_authentication.md";
 import { AKElement } from "@goauthentik/elements/Base";
 import "@goauthentik/elements/CodeMirror";
 import "@goauthentik/elements/Markdown";
@@ -25,8 +25,8 @@ import "@goauthentik/elements/buttons/SpinnerButton";
 import { getURLParam } from "@goauthentik/elements/router/RouteMatch";
 
 import { msg } from "@lit/localize";
-import { CSSResult, TemplateResult, html } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { CSSResult, PropertyValues, TemplateResult, html } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 
 import PFBanner from "@patternfly/patternfly/components/Banner/banner.css";
 import PFButton from "@patternfly/patternfly/components/Button/button.css";
@@ -75,21 +75,10 @@ export function isForward(mode: ProxyMode): boolean {
 
 @customElement("ak-provider-proxy-view")
 export class ProxyProviderViewPage extends AKElement {
-    @property()
-    set args(value: { [key: string]: number }) {
-        this.providerID = value.id;
-    }
-
     @property({ type: Number })
-    set providerID(value: number) {
-        new ProvidersApi(DEFAULT_CONFIG)
-            .providersProxyRetrieve({
-                id: value,
-            })
-            .then((prov) => (this.provider = prov));
-    }
+    providerID?: number;
 
-    @property({ attribute: false })
+    @state()
     provider?: ProxyProvider;
 
     static get styles(): CSSResult[] {
@@ -116,35 +105,54 @@ export class ProxyProviderViewPage extends AKElement {
         });
     }
 
+    fetchProvider(id: number) {
+        new ProvidersApi(DEFAULT_CONFIG)
+            .providersProxyRetrieve({ id })
+            .then((prov) => (this.provider = prov));
+    }
+
+    willUpdate(changedProperties: PropertyValues<this>) {
+        if (changedProperties.has("providerID") && this.providerID) {
+            this.fetchProvider(this.providerID);
+        }
+    }
+
     renderConfig(): TemplateResult {
         const serves = [
             {
                 label: msg("Nginx (Ingress)"),
                 md: MDNginxIngress,
+                meta: "providers/proxy/_nginx_ingress.md",
             },
             {
                 label: msg("Nginx (Proxy Manager)"),
                 md: MDNginxPM,
+                meta: "providers/proxy/_nginx_proxy_manager.md",
             },
             {
                 label: msg("Nginx (standalone)"),
                 md: MDNginxStandalone,
+                meta: "providers/proxy/_nginx_standalone.md",
             },
             {
                 label: msg("Traefik (Ingress)"),
                 md: MDTraefikIngress,
+                meta: "providers/proxy/_traefik_ingress.md",
             },
             {
                 label: msg("Traefik (Compose)"),
                 md: MDTraefikCompose,
+                meta: "providers/proxy/_traefik_compose.md",
             },
             {
                 label: msg("Traefik (Standalone)"),
                 md: MDTraefikStandalone,
+                meta: "providers/proxy/_traefik_standalone.md",
             },
             {
                 label: msg("Caddy (Standalone)"),
                 md: MDCaddyStandalone,
+                meta: "providers/proxy/_caddy_standalone.md",
             },
         ];
         const replacers: Replacer[] = [
@@ -158,7 +166,7 @@ export class ProxyProviderViewPage extends AKElement {
                     return input;
                 }
                 const extHost = new URL(this.provider.externalHost);
-                // See website/docs/providers/proxy/forward_auth.mdx
+                // See website/docs/add-secure-apps/providers/proxy/forward_auth.mdx
                 if (this.provider?.mode === ProxyMode.ForwardSingle) {
                     return input
                         .replaceAll("authentik.company", window.location.hostname)
@@ -182,7 +190,11 @@ export class ProxyProviderViewPage extends AKElement {
                     data-tab-title="${server.label}"
                     class="pf-c-page__main-section pf-m-light pf-m-no-padding-mobile"
                 >
-                    <ak-markdown .replacers=${replacers} .md=${server.md}></ak-markdown>
+                    <ak-markdown
+                        .replacers=${replacers}
+                        .md=${server.md}
+                        meta=${server.meta}
+                    ></ak-markdown>
                 </section>`;
             })}</ak-tabs
         >`;
@@ -248,7 +260,10 @@ export class ProxyProviderViewPage extends AKElement {
             </div>
             <div class="pf-c-card pf-l-grid__item pf-m-12-col">
                 <div class="pf-c-card__body">
-                    <ak-markdown .md=${MDHeaderAuthentication}></ak-markdown>
+                    <ak-markdown
+                        .md=${MDHeaderAuthentication}
+                        meta="proxy/header_authentication.md"
+                    ></ak-markdown>
                 </div>
             </div>
         </div>`;
@@ -377,9 +392,13 @@ export class ProxyProviderViewPage extends AKElement {
                                 <dd class="pf-c-description-list__description">
                                     <div class="pf-c-description-list__text">
                                         <ul class="pf-c-list">
-                                            ${this.provider.redirectUris.split("\n").map((url) => {
-                                                return html`<li><pre>${url}</pre></li>`;
-                                            })}
+                                            <ul>
+                                                ${this.provider.redirectUris.map((ru) => {
+                                                    return html`<li>
+                                                        ${ru.matchingMode}: ${ru.url}
+                                                    </li>`;
+                                                })}
+                                            </ul>
                                         </ul>
                                     </div>
                                 </dd>
@@ -396,5 +415,11 @@ export class ProxyProviderViewPage extends AKElement {
                     </div>
                 </div>
             </div>`;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-provider-proxy-view": ProxyProviderViewPage;
     }
 }

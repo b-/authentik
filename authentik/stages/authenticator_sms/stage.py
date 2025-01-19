@@ -1,7 +1,5 @@
 """SMS Setup stage"""
 
-from typing import Optional
-
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from django.http.request import QueryDict
@@ -12,7 +10,6 @@ from rest_framework.fields import BooleanField, CharField, IntegerField
 from authentik.flows.challenge import (
     Challenge,
     ChallengeResponse,
-    ChallengeTypes,
     WithUserInfoChallenge,
 )
 from authentik.flows.stage import ChallengeStageView
@@ -76,7 +73,7 @@ class AuthenticatorSMSStageView(ChallengeStageView):
         device: SMSDevice = self.request.session[SESSION_KEY_SMS_DEVICE]
         stage.send(device.token, device)
 
-    def _has_phone_number(self) -> Optional[str]:
+    def _has_phone_number(self) -> str | None:
         context = self.executor.plan.context
         if PLAN_CONTEXT_PHONE in context.get(PLAN_CONTEXT_PROMPT, {}):
             self.logger.debug("got phone number from plan context")
@@ -92,7 +89,6 @@ class AuthenticatorSMSStageView(ChallengeStageView):
     def get_challenge(self, *args, **kwargs) -> Challenge:
         return AuthenticatorSMSChallenge(
             data={
-                "type": ChallengeTypes.NATIVE.value,
                 "phone_number_required": self._has_phone_number() is None,
             }
         )

@@ -1,13 +1,14 @@
 """transfer common classes"""
 
 from collections import OrderedDict
+from collections.abc import Generator, Iterable, Mapping
 from copy import copy
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
 from functools import reduce
 from operator import ixor
 from os import getenv
-from typing import Any, Iterable, Literal, Mapping, Optional, Union
+from typing import Any, Literal, Union
 from uuid import UUID
 
 from deepmerge import always_merger
@@ -21,6 +22,10 @@ from yaml import SafeDumper, SafeLoader, ScalarNode, SequenceNode
 from authentik.lib.models import SerializerModel
 from authentik.lib.sentry import SentryIgnoredException
 from authentik.policies.models import PolicyBindingModel
+
+
+class UNSET:
+    """Used to test whether a key has not been set."""
 
 
 def get_attrs(obj: SerializerModel) -> dict[str, Any]:
@@ -45,7 +50,7 @@ def get_attrs(obj: SerializerModel) -> dict[str, Any]:
 class BlueprintEntryState:
     """State of a single instance"""
 
-    instance: Optional[Model] = None
+    instance: Model | None = None
 
 
 class BlueprintEntryDesiredState(Enum):
@@ -58,6 +63,15 @@ class BlueprintEntryDesiredState(Enum):
 
 
 @dataclass
+class BlueprintEntryPermission:
+    """Describe object-level permissions"""
+
+    permission: Union[str, "YAMLTag"]
+    user: Union[int, "YAMLTag", None] = field(default=None)
+    role: Union[str, "YAMLTag", None] = field(default=None)
+
+
+@dataclass
 class BlueprintEntry:
     """Single entry of a blueprint"""
 
@@ -67,14 +81,15 @@ class BlueprintEntry:
     )
     conditions: list[Any] = field(default_factory=list)
     identifiers: dict[str, Any] = field(default_factory=dict)
-    attrs: Optional[dict[str, Any]] = field(default_factory=dict)
+    attrs: dict[str, Any] | None = field(default_factory=dict)
+    permissions: list[BlueprintEntryPermission] = field(default_factory=list)
 
-    id: Optional[str] = None
+    id: str | None = None
 
     _state: BlueprintEntryState = field(default_factory=BlueprintEntryState)
 
     def __post_init__(self, *args, **kwargs) -> None:
-        self.__tag_contexts: list["YAMLTagContext"] = []
+        self.__tag_contexts: list[YAMLTagContext] = []
 
     @staticmethod
     def from_model(model: SerializerModel, *extra_identifier_names: str) -> "BlueprintEntry":
@@ -92,10 +107,10 @@ class BlueprintEntry:
             attrs=all_attrs,
         )
 
-    def _get_tag_context(
+    def get_tag_context(
         self,
         depth: int = 0,
-        context_tag_type: Optional[type["YAMLTagContext"] | tuple["YAMLTagContext", ...]] = None,
+        context_tag_type: type["YAMLTagContext"] | tuple["YAMLTagContext", ...] | None = None,
     ) -> "YAMLTagContext":
         """Get a YAMLTagContext object located at a certain depth in the tag tree"""
         if depth < 0:
@@ -108,8 +123,8 @@ class BlueprintEntry:
 
         try:
             return contexts[-(depth + 1)]
-        except IndexError:
-            raise ValueError(f"invalid depth: {depth}. Max depth: {len(contexts) - 1}")
+        except IndexError as exc:
+            raise ValueError(f"invalid depth: {depth}. Max depth: {len(contexts) - 1}") from exc
 
     def tag_resolver(self, value: Any, blueprint: "Blueprint") -> Any:
         """Check if we have any special tags that need handling"""
@@ -149,6 +164,17 @@ class BlueprintEntry:
         """Get the blueprint model, with yaml tags resolved if present"""
         return str(self.tag_resolver(self.model, blueprint))
 
+    def get_permissions(
+        self, blueprint: "Blueprint"
+    ) -> Generator[BlueprintEntryPermission, None, None]:
+        """Get permissions of this entry, with all yaml tags resolved"""
+        for perm in self.permissions:
+            yield BlueprintEntryPermission(
+                permission=self.tag_resolver(perm.permission, blueprint),
+                user=self.tag_resolver(perm.user, blueprint),
+                role=self.tag_resolver(perm.role, blueprint),
+            )
+
     def check_all_conditions_match(self, blueprint: "Blueprint") -> bool:
         """Check all conditions of this entry match (evaluate to True)"""
         return all(self.tag_resolver(self.conditions, blueprint))
@@ -170,11 +196,14 @@ class Blueprint:
     entries: list[BlueprintEntry] = field(default_factory=list)
     context: dict = field(default_factory=dict)
 
-    metadata: Optional[BlueprintMetadata] = field(default=None)
+    metadata: BlueprintMetadata | None = field(default=None)
 
 
 class YAMLTag:
     """Base class for all YAML Tags"""
+
+    def __repr__(self) -> str:
+        return str(self.resolve(BlueprintEntry(""), Blueprint()))
 
     def resolve(self, entry: BlueprintEntry, blueprint: Blueprint) -> Any:
         """Implement yaml tag logic"""
@@ -218,7 +247,7 @@ class Env(YAMLTag):
     """Lookup environment variable with optional default"""
 
     key: str
-    default: Optional[Any]
+    default: Any | None
 
     def __init__(self, loader: "BlueprintLoader", node: ScalarNode | SequenceNode) -> None:
         super().__init__()
@@ -237,7 +266,7 @@ class Context(YAMLTag):
     """Lookup key from instance context"""
 
     key: str
-    default: Optional[Any]
+    default: Any | None
 
     def __init__(self, loader: "BlueprintLoader", node: ScalarNode | SequenceNode) -> None:
         super().__init__()
@@ -281,7 +310,7 @@ class Format(YAMLTag):
         try:
             return self.format_string % tuple(args)
         except TypeError as exc:
-            raise EntryInvalidError.from_entry(exc, entry)
+            raise EntryInvalidError.from_entry(exc, entry) from exc
 
 
 class Find(YAMLTag):
@@ -306,7 +335,10 @@ class Find(YAMLTag):
         else:
             model_name = self.model_name
 
-        model_class = apps.get_model(*model_name.split("."))
+        try:
+            model_class = apps.get_model(*model_name.split("."))
+        except LookupError as exc:
+            raise EntryInvalidError.from_entry(exc, entry) from exc
 
         query = Q()
         for cond in self.conditions:
@@ -366,7 +398,7 @@ class Condition(YAMLTag):
             comparator = self._COMPARATORS[self.mode.upper()]
             return comparator(tuple(bool(x) for x in args))
         except (TypeError, KeyError) as exc:
-            raise EntryInvalidError.from_entry(exc, entry)
+            raise EntryInvalidError.from_entry(exc, entry) from exc
 
 
 class If(YAMLTag):
@@ -398,7 +430,7 @@ class If(YAMLTag):
                 blueprint,
             )
         except TypeError as exc:
-            raise EntryInvalidError.from_entry(exc, entry)
+            raise EntryInvalidError.from_entry(exc, entry) from exc
 
 
 class Enumerate(YAMLTag, YAMLTagContext):
@@ -412,9 +444,7 @@ class Enumerate(YAMLTag, YAMLTagContext):
         "SEQ": (list, lambda a, b: [*a, b]),
         "MAP": (
             dict,
-            lambda a, b: always_merger.merge(
-                a, {b[0]: b[1]} if isinstance(b, (tuple, list)) else b
-            ),
+            lambda a, b: always_merger.merge(a, {b[0]: b[1]} if isinstance(b, tuple | list) else b),
         ),
     }
 
@@ -456,7 +486,7 @@ class Enumerate(YAMLTag, YAMLTagContext):
         try:
             output_class, add_fn = self._OUTPUT_BODIES[self.output_body.upper()]
         except KeyError as exc:
-            raise EntryInvalidError.from_entry(exc, entry)
+            raise EntryInvalidError.from_entry(exc, entry) from exc
 
         result = output_class()
 
@@ -484,13 +514,13 @@ class EnumeratedItem(YAMLTag):
 
     _SUPPORTED_CONTEXT_TAGS = (Enumerate,)
 
-    def __init__(self, loader: "BlueprintLoader", node: ScalarNode) -> None:
+    def __init__(self, _loader: "BlueprintLoader", node: ScalarNode) -> None:
         super().__init__()
         self.depth = int(node.value)
 
     def resolve(self, entry: BlueprintEntry, blueprint: Blueprint) -> Any:
         try:
-            context_tag: Enumerate = entry._get_tag_context(
+            context_tag: Enumerate = entry.get_tag_context(
                 depth=self.depth,
                 context_tag_type=EnumeratedItem._SUPPORTED_CONTEXT_TAGS,
             )
@@ -500,9 +530,11 @@ class EnumeratedItem(YAMLTag):
                     f"{self.__class__.__name__} tags are only usable "
                     f"inside an {Enumerate.__name__} tag",
                     entry,
-                )
+                ) from exc
 
-            raise EntryInvalidError.from_entry(f"{self.__class__.__name__} tag: {exc}", entry)
+            raise EntryInvalidError.from_entry(
+                f"{self.__class__.__name__} tag: {exc}", entry
+            ) from exc
 
         return context_tag.get_context(entry, blueprint)
 
@@ -515,8 +547,8 @@ class Index(EnumeratedItem):
 
         try:
             return context[0]
-        except IndexError:  # pragma: no cover
-            raise EntryInvalidError.from_entry(f"Empty/invalid context: {context}", entry)
+        except IndexError as exc:  # pragma: no cover
+            raise EntryInvalidError.from_entry(f"Empty/invalid context: {context}", entry) from exc
 
 
 class Value(EnumeratedItem):
@@ -527,8 +559,55 @@ class Value(EnumeratedItem):
 
         try:
             return context[1]
-        except IndexError:  # pragma: no cover
-            raise EntryInvalidError.from_entry(f"Empty/invalid context: {context}", entry)
+        except IndexError as exc:  # pragma: no cover
+            raise EntryInvalidError.from_entry(f"Empty/invalid context: {context}", entry) from exc
+
+
+class AtIndex(YAMLTag):
+    """Get value at index of a sequence or mapping"""
+
+    obj: YAMLTag | dict | list | tuple
+    attribute: int | str | YAMLTag
+    default: Any | UNSET
+
+    def __init__(self, loader: "BlueprintLoader", node: SequenceNode) -> None:
+        super().__init__()
+        self.obj = loader.construct_object(node.value[0])
+        self.attribute = loader.construct_object(node.value[1])
+        if len(node.value) == 2:  # noqa: PLR2004
+            self.default = UNSET
+        else:
+            self.default = loader.construct_object(node.value[2])
+
+    def resolve(self, entry: BlueprintEntry, blueprint: Blueprint) -> Any:
+        if isinstance(self.obj, YAMLTag):
+            obj = self.obj.resolve(entry, blueprint)
+        else:
+            obj = self.obj
+        if isinstance(self.attribute, YAMLTag):
+            attribute = self.attribute.resolve(entry, blueprint)
+        else:
+            attribute = self.attribute
+
+        if isinstance(obj, list | tuple):
+            try:
+                return obj[attribute]
+            except TypeError as exc:
+                raise EntryInvalidError.from_entry(
+                    f"Invalid index for list: {attribute}", entry
+                ) from exc
+            except IndexError as exc:
+                if self.default is UNSET:
+                    raise EntryInvalidError.from_entry(
+                        f"Index out of range: {attribute}", entry
+                    ) from exc
+                return self.default
+        if attribute in obj:
+            return obj[attribute]
+        else:
+            if self.default is UNSET:
+                raise EntryInvalidError.from_entry(f"Key does not exist: {attribute}", entry)
+            return self.default
 
 
 class BlueprintDumper(SafeDumper):
@@ -555,7 +634,11 @@ class BlueprintDumper(SafeDumper):
 
             def factory(items):
                 final_dict = dict(items)
+                # Remove internal state variables
                 final_dict.pop("_state", None)
+                # Future-proof to only remove the ID if we don't set a value
+                if "id" in final_dict and final_dict.get("id") is None:
+                    final_dict.pop("id")
                 return final_dict
 
             data = asdict(data, dict_factory=factory)
@@ -577,18 +660,19 @@ class BlueprintLoader(SafeLoader):
         self.add_constructor("!Enumerate", Enumerate)
         self.add_constructor("!Value", Value)
         self.add_constructor("!Index", Index)
+        self.add_constructor("!AtIndex", AtIndex)
 
 
 class EntryInvalidError(SentryIgnoredException):
     """Error raised when an entry is invalid"""
 
-    entry_model: Optional[str]
-    entry_id: Optional[str]
-    validation_error: Optional[ValidationError]
-    serializer: Optional[Serializer] = None
+    entry_model: str | None
+    entry_id: str | None
+    validation_error: ValidationError | None
+    serializer: Serializer | None = None
 
     def __init__(
-        self, *args: object, validation_error: Optional[ValidationError] = None, **kwargs
+        self, *args: object, validation_error: ValidationError | None = None, **kwargs
     ) -> None:
         super().__init__(*args)
         self.entry_model = None

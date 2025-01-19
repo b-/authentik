@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from authentik.outposts.controllers.kubernetes import KubernetesController
 
 
-@dataclass
+@dataclass(slots=True)
 class PrometheusServiceMonitorSpecEndpoint:
     """Prometheus ServiceMonitor endpoint spec"""
 
@@ -21,24 +21,23 @@ class PrometheusServiceMonitorSpecEndpoint:
     path: str = field(default="/metrics")
 
 
-@dataclass
+@dataclass(slots=True)
 class PrometheusServiceMonitorSpecSelector:
     """Prometheus ServiceMonitor selector spec"""
 
-    # pylint: disable=invalid-name
     matchLabels: dict
 
 
-@dataclass
+@dataclass(slots=True)
 class PrometheusServiceMonitorSpec:
     """Prometheus ServiceMonitor spec"""
 
     endpoints: list[PrometheusServiceMonitorSpecEndpoint]
-    # pylint: disable=invalid-name
+
     selector: PrometheusServiceMonitorSpecSelector
 
 
-@dataclass
+@dataclass(slots=True)
 class PrometheusServiceMonitorMetadata:
     """Prometheus ServiceMonitor metadata"""
 
@@ -47,11 +46,10 @@ class PrometheusServiceMonitorMetadata:
     labels: dict = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(slots=True)
 class PrometheusServiceMonitor:
     """Prometheus ServiceMonitor"""
 
-    # pylint: disable=invalid-name
     apiVersion: str
     kind: str
     metadata: PrometheusServiceMonitorMetadata

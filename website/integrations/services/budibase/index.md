@@ -1,6 +1,9 @@
 ---
-title: Budibase
+title: Integrate with Budibase
+sidebar_label: Budibase
 ---
+
+# Budibase
 
 <span class="badge badge--secondary">Support level: Community</span>
 
@@ -12,17 +15,17 @@ title: Budibase
 
 ## Preparation
 
-The following placeholders will be used:
+The following placeholders are used in this guide:
 
--   `budibase.company` is the FQDN of the Budibase install.
--   `authentik.company` is the FQDN of the authentik install.
+- `budibase.company` is the FQDN of the Budibase installation.
+- `authentik.company` is the FQDN of the authentik installation.
 
 Create an application in authentik. Create an OAuth2/OpenID provider with the following parameters:
 
--   Client Type: `Confidential`
--   Scopes: OpenID, Email and Profile
--   Signing Key: Select any available key
--   Redirect URIs: `https://budibase.company/api/global/auth/oidc/callback`
+- Client Type: `Confidential`
+- Scopes: OpenID, Email and Profile
+- Signing Key: Select any available key
+- Redirect URIs: `https://budibase.company/api/global/auth/oidc/callback`
 
 Note the Client ID and Client Secret values. Create an application, using the provider you've created above.
 
@@ -30,6 +33,6 @@ Note the Client ID and Client Secret values. Create an application, using the pr
 
 In Budibase under `Auth` set the following values
 
--   Config URL: `https://authentik.company/application/o/<Slug of the application from above>/.well-known/openid-configuration`
--   Client ID: `Client ID from above`
--   Client Secret: `Client Secret from above`
+- Config URL: `https://authentik.company/application/o/<Slug of the application from above>/.well-known/openid-configuration`
+- Client ID: `Client ID from above`
+- Client Secret: `Client Secret from above`

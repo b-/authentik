@@ -1,8 +1,9 @@
 import "@goauthentik/admin/providers/RelatedApplicationButton";
+import "@goauthentik/admin/providers/rac/ConnectionTokenList";
 import "@goauthentik/admin/providers/rac/EndpointForm";
 import "@goauthentik/admin/providers/rac/EndpointList";
 import "@goauthentik/admin/providers/rac/RACProviderForm";
-import "@goauthentik/app/elements/rbac/ObjectPermissionsPage";
+import "@goauthentik/admin/rbac/ObjectPermissionsPage";
 import { DEFAULT_CONFIG } from "@goauthentik/common/api/config";
 import { EVENT_REFRESH } from "@goauthentik/common/constants";
 import "@goauthentik/components/ak-status-label";
@@ -14,8 +15,8 @@ import "@goauthentik/elements/buttons/ModalButton";
 import "@goauthentik/elements/buttons/SpinnerButton";
 
 import { msg } from "@lit/localize";
-import { CSSResult, TemplateResult, html } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { CSSResult, PropertyValues, TemplateResult, html } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 
 import PFBanner from "@patternfly/patternfly/components/Banner/banner.css";
 import PFButton from "@patternfly/patternfly/components/Button/button.css";
@@ -37,21 +38,10 @@ import {
 
 @customElement("ak-provider-rac-view")
 export class RACProviderViewPage extends AKElement {
-    @property()
-    set args(value: { [key: string]: number }) {
-        this.providerID = value.id;
-    }
-
     @property({ type: Number })
-    set providerID(value: number) {
-        new ProvidersApi(DEFAULT_CONFIG)
-            .providersRacRetrieve({
-                id: value,
-            })
-            .then((prov) => (this.provider = prov));
-    }
+    providerID?: number;
 
-    @property({ attribute: false })
+    @state()
     provider?: RACProvider;
 
     static get styles(): CSSResult[] {
@@ -78,6 +68,18 @@ export class RACProviderViewPage extends AKElement {
         });
     }
 
+    fetchProvider(id: number) {
+        new ProvidersApi(DEFAULT_CONFIG)
+            .providersRacRetrieve({ id })
+            .then((prov) => (this.provider = prov));
+    }
+
+    willUpdate(changedProperties: PropertyValues<this>) {
+        if (changedProperties.has("providerID") && this.providerID) {
+            this.fetchProvider(this.providerID);
+        }
+    }
+
     render(): TemplateResult {
         if (!this.provider) {
             return html``;
@@ -85,6 +87,19 @@ export class RACProviderViewPage extends AKElement {
         return html`<ak-tabs>
             <section slot="page-overview" data-tab-title="${msg("Overview")}">
                 ${this.renderTabOverview()}
+            </section>
+            <section
+                slot="page-connections"
+                data-tab-title="${msg("Connections")}"
+                class="pf-c-page__main-section pf-m-no-padding-mobile"
+            >
+                <div class="pf-c-card">
+                    <div class="pf-c-card__body">
+                        <ak-rac-connection-token-list
+                            .provider=${this.provider}
+                        ></ak-rac-connection-token-list>
+                    </div>
+                </div>
             </section>
             <section
                 slot="page-changelog"
@@ -114,11 +129,7 @@ export class RACProviderViewPage extends AKElement {
         if (!this.provider) {
             return html``;
         }
-        return html` <div slot="header" class="pf-c-banner pf-m-info">
-                ${msg("RAC is in preview.")}
-                <a href="mailto:hello+feature/rac@goauthentik.io">${msg("Send us feedback!")}</a>
-            </div>
-            ${this.provider?.assignedApplicationName
+        return html`${this.provider?.assignedApplicationName
                 ? html``
                 : html`<div slot="header" class="pf-c-banner pf-m-warning">
                       ${msg("Warning: Provider is not used by an Application.")}
@@ -177,5 +188,11 @@ export class RACProviderViewPage extends AKElement {
                     </div>
                 </div>
             </div>`;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-provider-rac-view": RACProviderViewPage;
     }
 }

@@ -19,7 +19,6 @@ from authentik.policies.types import PolicyRequest, PolicyResult
 from authentik.root.middleware import ClientIPMiddleware
 
 LOGGER = get_logger()
-CACHE_KEY_PREFIX = "goauthentik.io/policies/reputation/scores/"
 
 
 def reputation_expiry():
@@ -97,3 +96,8 @@ class Reputation(ExpiringModel, SerializerModel):
         verbose_name = _("Reputation Score")
         verbose_name_plural = _("Reputation Scores")
         unique_together = ("identifier", "ip")
+        indexes = ExpiringModel.Meta.indexes + [
+            models.Index(fields=["identifier"]),
+            models.Index(fields=["ip"]),
+            models.Index(fields=["ip", "identifier"]),
+        ]

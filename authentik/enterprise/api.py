@@ -1,36 +1,35 @@
 """Enterprise API Views"""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from django.utils.timezone import now
 from django.utils.translation import gettext as _
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.fields import BooleanField, CharField, DateTimeField, IntegerField
+from rest_framework.fields import CharField, IntegerField
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.serializers import ModelSerializer
 from rest_framework.viewsets import ModelViewSet
 
-from authentik.api.decorators import permission_required
 from authentik.core.api.used_by import UsedByMixin
-from authentik.core.api.utils import PassiveSerializer
+from authentik.core.api.utils import ModelSerializer, PassiveSerializer
 from authentik.core.models import User, UserTypes
-from authentik.enterprise.models import License, LicenseKey
-from authentik.root.install_id import get_install_id
+from authentik.enterprise.license import LicenseKey, LicenseSummarySerializer
+from authentik.enterprise.models import License
+from authentik.rbac.decorators import permission_required
+from authentik.tenants.utils import get_unique_identifier
 
 
 class EnterpriseRequiredMixin:
     """Mixin to validate that a valid enterprise license
-    exists before allowing to safe the object"""
+    exists before allowing to save the object"""
 
     def validate(self, attrs: dict) -> dict:
         """Check that a valid license exists"""
-        total = LicenseKey.get_total()
-        if not total.is_valid():
+        if not LicenseKey.cached_summary().status.is_valid:
             raise ValidationError(_("Enterprise is required to create/update this object."))
         return super().validate(attrs)
 
@@ -61,19 +60,6 @@ class LicenseSerializer(ModelSerializer):
         }
 
 
-class LicenseSummary(PassiveSerializer):
-    """Serializer for license status"""
-
-    internal_users = IntegerField(required=True)
-    external_users = IntegerField(required=True)
-    valid = BooleanField()
-    show_admin_warning = BooleanField()
-    show_user_warning = BooleanField()
-    read_only = BooleanField()
-    latest_valid = DateTimeField()
-    has_license = BooleanField()
-
-
 class LicenseForecastSerializer(PassiveSerializer):
     """Serializer for license forecast"""
 
@@ -100,43 +86,35 @@ class LicenseViewSet(UsedByMixin, ModelViewSet):
         },
     )
     @action(detail=False, methods=["GET"])
-    def get_install_id(self, request: Request) -> Response:
+    def install_id(self, request: Request) -> Response:
         """Get install_id"""
         return Response(
             data={
-                "install_id": get_install_id(),
+                "install_id": get_unique_identifier(),
             }
         )
 
     @extend_schema(
         request=OpenApiTypes.NONE,
         responses={
-            200: LicenseSummary(),
+            200: LicenseSummarySerializer(),
         },
+        parameters=[
+            OpenApiParameter(
+                name="cached",
+                location=OpenApiParameter.QUERY,
+                type=OpenApiTypes.BOOL,
+                default=True,
+            )
+        ],
     )
     @action(detail=False, methods=["GET"], permission_classes=[IsAuthenticated])
     def summary(self, request: Request) -> Response:
         """Get the total license status"""
-        total = LicenseKey.get_total()
-        last_valid = LicenseKey.last_valid_date()
-        # TODO: move this to a different place?
-        show_admin_warning = last_valid < now() - timedelta(weeks=2)
-        show_user_warning = last_valid < now() - timedelta(weeks=4)
-        read_only = last_valid < now() - timedelta(weeks=6)
-        latest_valid = datetime.fromtimestamp(total.exp)
-        response = LicenseSummary(
-            data={
-                "internal_users": total.internal_users,
-                "external_users": total.external_users,
-                "valid": total.is_valid(),
-                "show_admin_warning": show_admin_warning,
-                "show_user_warning": show_user_warning,
-                "read_only": read_only,
-                "latest_valid": latest_valid,
-                "has_license": License.objects.all().count() > 0,
-            }
-        )
-        response.is_valid(raise_exception=True)
+        summary = LicenseKey.cached_summary()
+        if request.query_params.get("cached", "true").lower() == "false":
+            summary = LicenseKey.get_total().summary()
+        response = LicenseSummarySerializer(instance=summary)
         return Response(response.data)
 
     @permission_required(None, ["authentik_enterprise.view_license"])
@@ -159,7 +137,7 @@ class LicenseViewSet(UsedByMixin, ModelViewSet):
         forecast_for_months = 12
         response = LicenseForecastSerializer(
             data={
-                "internal_users": LicenseKey.get_default_user_count(),
+                "internal_users": LicenseKey.get_internal_user_count(),
                 "external_users": LicenseKey.get_external_user_count(),
                 "forecasted_internal_users": (internal_in_last_month * forecast_for_months),
                 "forecasted_external_users": (external_in_last_month * forecast_for_months),

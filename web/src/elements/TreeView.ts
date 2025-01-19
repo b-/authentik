@@ -50,7 +50,7 @@ export class TreeViewNode extends AKElement {
         return pathItems.reverse().join(this.separator);
     }
 
-    protected createRenderRoot(): Element {
+    protected createRenderRoot() {
         return this;
     }
 
@@ -89,6 +89,9 @@ export class TreeViewNode extends AKElement {
                                 new CustomEvent(EVENT_REFRESH, {
                                     bubbles: true,
                                     composed: true,
+                                    detail: {
+                                        path: this.fullPath,
+                                    },
                                 }),
                             );
                         }}
@@ -171,8 +174,7 @@ export class TreeView extends AKElement {
             }
             return item;
         } else {
-            const child = this.createNode(path, parentItem.childItems[idx], level + 1);
-            return child;
+            return this.createNode(path, parentItem.childItems[idx], level + 1);
         }
     }
 
@@ -204,5 +206,12 @@ export class TreeView extends AKElement {
                 ></ak-treeview-node>
             </ul>
         </div>`;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-treeview": TreeView;
+        "ak-treeview-node": TreeViewNode;
     }
 }

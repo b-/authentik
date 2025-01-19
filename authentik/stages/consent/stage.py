@@ -1,6 +1,5 @@
 """authentik consent stage"""
 
-from typing import Optional
 from uuid import uuid4
 
 from django.http import HttpRequest, HttpResponse
@@ -11,7 +10,6 @@ from authentik.core.api.utils import PassiveSerializer
 from authentik.flows.challenge import (
     Challenge,
     ChallengeResponse,
-    ChallengeTypes,
     WithUserInfoChallenge,
 )
 from authentik.flows.planner import PLAN_CONTEXT_APPLICATION, PLAN_CONTEXT_PENDING_USER
@@ -59,7 +57,6 @@ class ConsentStageView(ChallengeStageView):
         token = str(uuid4())
         self.request.session[SESSION_KEY_CONSENT_TOKEN] = token
         data = {
-            "type": ChallengeTypes.NATIVE.value,
             "permissions": self.executor.plan.context.get(PLAN_CONTEXT_CONSENT_PERMISSIONS, []),
             "additional_permissions": self.executor.plan.context.get(
                 PLAN_CONTEXT_CONSENT_EXTRA_PERMISSIONS, []
@@ -99,7 +96,7 @@ class ConsentStageView(ChallengeStageView):
         if PLAN_CONTEXT_PENDING_USER in self.executor.plan.context:
             user = self.executor.plan.context[PLAN_CONTEXT_PENDING_USER]
 
-        consent: Optional[UserConsent] = UserConsent.filter_not_expired(
+        consent: UserConsent | None = UserConsent.filter_not_expired(
             user=user, application=application
         ).first()
         self.executor.plan.context[PLAN_CONTEXT_CONSENT] = consent

@@ -21,6 +21,8 @@ from authentik.enterprise.providers.rac.models import ConnectionToken, Endpoint
 @receiver(user_logged_out)
 def user_logged_out_session(sender, request: HttpRequest, user: User, **_):
     """Disconnect any open RAC connections"""
+    if not request.session or not request.session.session_key:
+        return
     layer = get_channel_layer()
     async_to_sync(layer.group_send)(
         RAC_CLIENT_GROUP_SESSION
@@ -45,8 +47,8 @@ def pre_delete_connection_token_disconnect(sender, instance: ConnectionToken, **
 
 
 @receiver(post_save, sender=Endpoint)
-def post_save_application(sender: type[Model], instance, created: bool, **_):
-    """Clear user's application cache upon application creation"""
+def post_save_endpoint(sender: type[Model], instance, created: bool, **_):
+    """Clear user's endpoint cache upon endpoint creation"""
     if not created:  # pragma: no cover
         return
 

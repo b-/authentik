@@ -1,6 +1,9 @@
 ---
-title: SharePoint Server SE
+title: Integrate with SharePoint Server SE
+sidebar_label: SharePoint Server SE
 ---
+
+# SharePoint Server SE
 
 <span class="badge badge--secondary">Support level: Community</span>
 
@@ -72,14 +75,14 @@ SharePoint requires additional properties within the OpenID and profile scopes i
 
 Additional information from Microsoft documentation:
 
--   https://learn.microsoft.com/en-us/entra/identity-platform/id-tokens#validate-tokens
--   https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference#payload-claims
+- https://learn.microsoft.com/en-us/entra/identity-platform/id-tokens#validate-tokens
+- https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference#payload-claims
 
 #### Add an OpenID scope mapping for SharePoint
 
 From the authentik Admin Dashboard:
 
-1. Open **Customisation > Property Mappings** page from the sidebar.
+1. Open **Customization > Property Mappings** page from the sidebar.
 2. Click **Create** from the property mapping list command bar.
 3. Within the new property mapping form, select **Scope Mapping**.
 4. Click **Next** and enter the following values:
@@ -102,7 +105,7 @@ return {
 
 From the authentik Admin Dashboard:
 
-1. Open **Customisation > Property Mappings** page from the sidebar.
+1. Open **Customization > Property Mappings** page from the sidebar.
 2. Click **Create** from the property mapping list command bar.
 3. Within the new property mapping form, select **Scope Mapping**.
 4. Click **Next** and enter the following values:
@@ -178,8 +181,8 @@ The following PowerShell script must be updated according to your environment an
 
 :::caution
 
--   Update placeholders
--   Read all script's comments
+- Update placeholders
+- Read all script's comments
 
 :::
 
@@ -229,8 +232,8 @@ The following PowerShell script must be updated according to your environment an
 
 :::caution
 
--   Update placeholders
--   Read all script's comments.
+- Update placeholders
+- Read all script's comments.
 
 :::
 
@@ -290,9 +293,9 @@ Repeat all steps for each target web applications that matches with `auth.provid
 
 Objectives :
 
--   Integrate SharePoint People Picker with authentik to search users and groups
--   Augment SharePoint user claims at login stage
--   Resolve user's membership
+- Integrate SharePoint People Picker with authentik to search users and groups
+- Augment SharePoint user claims at login stage
+- Resolve user's membership
 
 :::caution
 [LDAPCP](https://www.ldapcp.com/docs/overview/introduction/) must be installed on the target SharePoint farm.
@@ -304,8 +307,8 @@ The following PowerShell script must be updated according to your environment an
 
 :::caution
 
--   Update placeholders
--   Read all script's comments
+- Update placeholders
+- Read all script's comments
 
 :::
 

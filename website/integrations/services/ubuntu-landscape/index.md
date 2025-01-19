@@ -1,6 +1,9 @@
 ---
-title: Ubuntu Landscape
+title: Integrate with Ubuntu Landscape
+sidebar_label: Ubuntu Landscape
 ---
+
+# Ubuntu Landscape
 
 <span class="badge badge--secondary">Support level: Community</span>
 
@@ -16,10 +19,10 @@ This requires authentik 0.10.3 or newer.
 
 ## Preparation
 
-The following placeholders will be used:
+The following placeholders are used in this guide:
 
--   `landscape.company` is the FQDN of the Landscape server.
--   `authentik.company` is the FQDN of the authentik install.
+- `landscape.company` is the FQDN of the Landscape server.
+- `authentik.company` is the FQDN of the authentik installation.
 
 Landscape uses the OpenID-Connect Protocol for single-sign on.
 

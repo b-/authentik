@@ -1,9 +1,8 @@
 import "@goauthentik/admin/applications/ApplicationForm";
-import { PFSize } from "@goauthentik/app/elements/Spinner";
 import { DEFAULT_CONFIG } from "@goauthentik/common/api/config";
-import { uiConfig } from "@goauthentik/common/ui/config";
-import "@goauthentik/components/ak-app-icon";
-import MDApplication from "@goauthentik/docs/core/applications.md";
+import MDApplication from "@goauthentik/docs/add-secure-apps/applications/index.md";
+import "@goauthentik/elements/AppIcon.js";
+import { WithBrandConfig } from "@goauthentik/elements/Interface/brandProvider";
 import "@goauthentik/elements/Markdown";
 import "@goauthentik/elements/buttons/SpinnerButton";
 import "@goauthentik/elements/forms/DeleteBulkForm";
@@ -14,9 +13,10 @@ import { TableColumn } from "@goauthentik/elements/table/Table";
 import { TablePage } from "@goauthentik/elements/table/TablePage";
 import "@patternfly/elements/pf-tooltip/pf-tooltip.js";
 
-import { msg } from "@lit/localize";
+import { msg, str } from "@lit/localize";
 import { CSSResult, TemplateResult, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { ifDefined } from "lit/directives/if-defined.js";
 
 import PFCard from "@patternfly/patternfly/components/Card/card.css";
 
@@ -41,7 +41,7 @@ export const applicationListStyle = css`
 `;
 
 @customElement("ak-application-list")
-export class ApplicationListPage extends TablePage<Application> {
+export class ApplicationListPage extends WithBrandConfig(TablePage<Application>) {
     searchEnabled(): boolean {
         return true;
     }
@@ -50,7 +50,7 @@ export class ApplicationListPage extends TablePage<Application> {
     }
     pageDescription(): string {
         return msg(
-            "External applications that use authentik as an identity provider via protocols like OAuth2 and SAML. All applications are shown here, even ones you cannot access.",
+            str`External applications that use ${this.brand.brandingTitle || "authentik"} as an identity provider via protocols like OAuth2 and SAML. All applications are shown here, even ones you cannot access.`,
         );
     }
     pageIcon(): string {
@@ -63,12 +63,9 @@ export class ApplicationListPage extends TablePage<Application> {
     @property()
     order = "name";
 
-    async apiEndpoint(page: number): Promise<PaginatedResponse<Application>> {
+    async apiEndpoint(): Promise<PaginatedResponse<Application>> {
         return new CoreApi(DEFAULT_CONFIG).coreApplicationsList({
-            ordering: this.order,
-            page: page,
-            pageSize: (await uiConfig()).pagination.perPage,
-            search: this.search || "",
+            ...(await this.defaultEndpointConfig()),
             superuserFullList: true,
         });
     }
@@ -93,12 +90,10 @@ export class ApplicationListPage extends TablePage<Application> {
     }
 
     renderSidebarAfter(): TemplateResult {
-        // Rendering the wizard with .open here, as if we set the attribute in
-        // renderObjectCreate() it'll open two wizards, since that function gets called twice
         return html`<div class="pf-c-sidebar__panel pf-m-width-25">
             <div class="pf-c-card">
                 <div class="pf-c-card__body">
-                    <ak-markdown .md=${MDApplication}></ak-markdown>
+                    <ak-markdown .md=${MDApplication} meta="applications/index.md"></ak-markdown>
                 </div>
             </div>
         </div>`;
@@ -128,7 +123,10 @@ export class ApplicationListPage extends TablePage<Application> {
 
     row(item: Application): TemplateResult[] {
         return [
-            html`<ak-app-icon size=${PFSize.Medium} .app=${item}></ak-app-icon>`,
+            html`<ak-app-icon
+                name=${item.name}
+                icon=${ifDefined(item.metaIcon || undefined)}
+            ></ak-app-icon>`,
             html`<a href="#/core/applications/${item.slug}">
                 <div>${item.name}</div>
                 ${item.metaPublisher ? html`<small>${item.metaPublisher}</small>` : html``}
@@ -168,5 +166,11 @@ export class ApplicationListPage extends TablePage<Application> {
             <ak-application-form slot="form"> </ak-application-form>
             <button slot="trigger" class="pf-c-button pf-m-primary">${msg("Create")}</button>
         </ak-forms-modal>`;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-application-list": ApplicationListPage;
     }
 }

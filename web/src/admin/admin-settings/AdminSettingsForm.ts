@@ -1,9 +1,9 @@
-import { first } from "@goauthentik/app/common/utils";
 import { DEFAULT_CONFIG } from "@goauthentik/common/api/config";
+import { first } from "@goauthentik/common/utils";
+import "@goauthentik/components/ak-number-input";
 import "@goauthentik/components/ak-switch-input";
 import "@goauthentik/components/ak-text-input";
-import "@goauthentik/elements/CodeMirror";
-import { CodeMirrorMode } from "@goauthentik/elements/CodeMirror";
+import "@goauthentik/elements/ak-array-input.js";
 import { Form } from "@goauthentik/elements/forms/Form";
 import "@goauthentik/elements/forms/FormGroup";
 import "@goauthentik/elements/forms/HorizontalFormElement";
@@ -12,35 +12,56 @@ import "@goauthentik/elements/forms/SearchSelect";
 import "@goauthentik/elements/utils/TimeDeltaHelp";
 
 import { msg } from "@lit/localize";
-import { CSSResult, TemplateResult, html } from "lit";
+import { CSSResult, TemplateResult, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { ifDefined } from "lit/directives/if-defined.js";
 
 import PFList from "@patternfly/patternfly/components/List/list.css";
 
-import { AdminApi, Settings, SettingsRequest } from "@goauthentik/api";
+import { AdminApi, FooterLink, Settings, SettingsRequest } from "@goauthentik/api";
+
+import "./AdminSettingsFooterLinks.js";
+import { IFooterLinkInput, akFooterLinkInput } from "./AdminSettingsFooterLinks.js";
 
 @customElement("ak-admin-settings-form")
 export class AdminSettingsForm extends Form<SettingsRequest> {
-    @property({ attribute: false })
-    set settings(value: Settings) {
+    //
+    // Custom property accessors in Lit 2 require a manual call to requestUpdate(). See:
+    // https://lit.dev/docs/v2/components/properties/#accessors-custom
+    //
+    set settings(value: Settings | undefined) {
         this._settings = value;
+        this.requestUpdate();
+    }
+
+    @property({ type: Object })
+    get settings() {
+        return this._settings;
     }
 
     private _settings?: Settings;
+
+    static get styles(): CSSResult[] {
+        return super.styles.concat(
+            PFList,
+            css`
+                ak-array-input {
+                    width: 100%;
+                }
+            `,
+        );
+    }
 
     getSuccessMessage(): string {
         return msg("Successfully updated settings.");
     }
 
     async send(data: SettingsRequest): Promise<Settings> {
-        return new AdminApi(DEFAULT_CONFIG).adminSettingsUpdate({
+        const result = await new AdminApi(DEFAULT_CONFIG).adminSettingsUpdate({
             settingsRequest: data,
         });
-    }
-
-    static get styles(): CSSResult[] {
-        return super.styles.concat(PFList);
+        this.dispatchEvent(new CustomEvent("ak-admin-setting-changed"));
+        return result;
     }
 
     renderForm(): TemplateResult {
@@ -154,15 +175,21 @@ export class AdminSettingsForm extends Form<SettingsRequest> {
             >
             </ak-text-input>
             <ak-form-element-horizontal label=${msg("Footer links")} name="footerLinks">
-                <ak-codemirror
-                    mode=${CodeMirrorMode.YAML}
-                    .value="${first(this._settings?.footerLinks, [])}"
-                ></ak-codemirror>
+                <ak-array-input
+                    .items=${this._settings?.footerLinks ?? []}
+                    .newItem=${() => ({ name: "", href: "" })}
+                    .row=${(f?: FooterLink) =>
+                        akFooterLinkInput({
+                            ".footerLink": f,
+                            "style": "width: 100%",
+                            "name": "footer-link",
+                        } as unknown as IFooterLinkInput)}
+                >
+                </ak-array-input>
                 <p class="pf-c-form__helper-text">
                     ${msg(
-                        "This option configures the footer links on the flow executor pages. It must be a valid YAML or JSON list and can be used as follows:",
+                        "This option configures the footer links on the flow executor pages. The URL is limited to web and mail addresses. If the name is left blank, the URL will be shown.",
                     )}
-                    <code>[{"name": "Link Name","href":"https://goauthentik.io"}]</code>
                 </p>
             </ak-form-element-horizontal>
             <ak-switch-input
@@ -181,6 +208,37 @@ export class AdminSettingsForm extends Form<SettingsRequest> {
                 help=${msg("Globally enable/disable impersonation.")}
             >
             </ak-switch-input>
+            <ak-switch-input
+                name="impersonationRequireReason"
+                label=${msg("Require reason for impersonation")}
+                ?checked="${this._settings?.impersonationRequireReason}"
+                help=${msg("Require administrators to provide a reason for impersonating a user.")}
+            >
+            </ak-switch-input>
+            <ak-text-input
+                name="defaultTokenDuration"
+                label=${msg("Default token duration")}
+                required
+                value="${ifDefined(this._settings?.defaultTokenDuration)}"
+                .bighelp=${html`<p class="pf-c-form__helper-text">
+                        ${msg("Default duration for generated tokens")}
+                    </p>
+                    <ak-utils-time-delta-help></ak-utils-time-delta-help>`}
+            >
+            </ak-text-input>
+            <ak-number-input
+                label=${msg("Default token length")}
+                required
+                name="defaultTokenLength"
+                value="${first(this._settings?.defaultTokenLength, 60)}"
+                help=${msg("Default length of generated tokens")}
+            ></ak-number-input>
         `;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-admin-settings-form": AdminSettingsForm;
     }
 }

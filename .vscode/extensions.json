@@ -10,13 +10,12 @@
         "Gruntfuggly.todo-tree",
         "mechatroner.rainbow-csv",
         "ms-python.black-formatter",
-        "ms-python.isort",
-        "ms-python.pylint",
+        "charliermarsh.ruff",
         "ms-python.python",
         "ms-python.vscode-pylance",
         "ms-python.black-formatter",
         "redhat.vscode-yaml",
         "Tobermory.es6-string-html",
-        "unifiedjs.vscode-mdx",
+        "unifiedjs.vscode-mdx"
     ]
 }

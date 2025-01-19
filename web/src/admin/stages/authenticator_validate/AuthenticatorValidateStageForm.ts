@@ -1,5 +1,9 @@
 import { BaseStageForm } from "@goauthentik/admin/stages/BaseStageForm";
+import { deviceTypeRestrictionPair } from "@goauthentik/admin/stages/authenticator_webauthn/utils";
 import { DEFAULT_CONFIG } from "@goauthentik/common/api/config";
+import "@goauthentik/elements/Alert";
+import "@goauthentik/elements/ak-dual-select/ak-dual-select-dynamic-selected-provider.js";
+import "@goauthentik/elements/ak-dual-select/ak-dual-select-provider";
 import "@goauthentik/elements/forms/FormGroup";
 import "@goauthentik/elements/forms/HorizontalFormElement";
 import "@goauthentik/elements/forms/Radio";
@@ -18,6 +22,12 @@ import {
     StagesApi,
     UserVerificationEnum,
 } from "@goauthentik/api";
+
+import {
+    authenticatorWebauthnDeviceTypesListProvider,
+    stagesProvider,
+    stagesSelector,
+} from "./AuthenticatorValidateStageFormHelpers.js";
 
 @customElement("ak-stage-authenticator-validate-form")
 export class AuthenticatorValidateStageForm extends BaseStageForm<AuthenticatorValidateStage> {
@@ -63,7 +73,16 @@ export class AuthenticatorValidateStageForm extends BaseStageForm<AuthenticatorV
     }
 
     renderForm(): TemplateResult {
-        return html` <span>
+        const authenticators = [
+            [DeviceClassesEnum.Static, msg("Static Tokens")],
+            [DeviceClassesEnum.Totp, msg("TOTP Authenticators")],
+            [DeviceClassesEnum.Webauthn, msg("WebAuthn Authenticators")],
+            [DeviceClassesEnum.Duo, msg("Duo Authenticators")],
+            [DeviceClassesEnum.Sms, msg("SMS-based Authenticators")],
+        ];
+
+        return html`
+            <span>
                 ${msg(
                     "Stage used to validate any authenticator. This stage should be used during authentication or authorization flows.",
                 )}
@@ -84,43 +103,18 @@ export class AuthenticatorValidateStageForm extends BaseStageForm<AuthenticatorV
                         ?required=${true}
                         name="deviceClasses"
                     >
-                        <select name="users" class="pf-c-form-control" multiple>
-                            <option
-                                value=${DeviceClassesEnum.Static}
-                                ?selected=${this.isDeviceClassSelected(DeviceClassesEnum.Static)}
-                            >
-                                ${msg("Static Tokens")}
-                            </option>
-                            <option
-                                value=${DeviceClassesEnum.Totp}
-                                ?selected=${this.isDeviceClassSelected(DeviceClassesEnum.Totp)}
-                            >
-                                ${msg("TOTP Authenticators")}
-                            </option>
-                            <option
-                                value=${DeviceClassesEnum.Webauthn}
-                                ?selected=${this.isDeviceClassSelected(DeviceClassesEnum.Webauthn)}
-                            >
-                                ${msg("WebAuthn Authenticators")}
-                            </option>
-                            <option
-                                value=${DeviceClassesEnum.Duo}
-                                ?selected=${this.isDeviceClassSelected(DeviceClassesEnum.Duo)}
-                            >
-                                ${msg("Duo Authenticators")}
-                            </option>
-                            <option
-                                value=${DeviceClassesEnum.Sms}
-                                ?selected=${this.isDeviceClassSelected(DeviceClassesEnum.Sms)}
-                            >
-                                ${msg("SMS-based Authenticators")}
-                            </option>
-                        </select>
+                        <ak-checkbox-group
+                            name="users"
+                            class="user-field-select"
+                            .options=${authenticators}
+                            .value=${authenticators
+                                .map((authenticator) => authenticator[0])
+                                .filter((name) =>
+                                    this.isDeviceClassSelected(name as DeviceClassesEnum),
+                                )}
+                        ></ak-checkbox-group>
                         <p class="pf-c-form__helper-text">
                             ${msg("Device classes which can be used to authenticate.")}
-                        </p>
-                        <p class="pf-c-form__helper-text">
-                            ${msg("Hold control/command to select multiple items.")}
                         </p>
                     </ak-form-element-horizontal>
                     <ak-form-element-horizontal
@@ -136,7 +130,7 @@ export class AuthenticatorValidateStageForm extends BaseStageForm<AuthenticatorV
                         />
                         <p class="pf-c-form__helper-text">
                             ${msg(
-                                "If any of the devices user of the types selected above have been used within this duration, this stage will be skipped.",
+                                "If the user has successfully authenticated with a device in the classes listed above within this configured duration, this stage will be skipped.",
                             )}
                         </p>
                         <ak-utils-time-delta-help></ak-utils-time-delta-help>
@@ -183,6 +177,38 @@ export class AuthenticatorValidateStageForm extends BaseStageForm<AuthenticatorV
                             </option>
                         </select>
                     </ak-form-element-horizontal>
+                    ${this.showConfigurationStages
+                        ? html`
+                              <ak-form-element-horizontal
+                                  label=${msg("Configuration stages")}
+                                  name="configurationStages"
+                              >
+                                  <ak-dual-select-dynamic-selected
+                                      .provider=${stagesProvider}
+                                      .selector=${stagesSelector(
+                                          this.instance?.configurationStages,
+                                      )}
+                                      available-label="${msg("Available Stages")}"
+                                      selected-label="${msg("Selected Stages")}"
+                                  ></ak-dual-select-dynamic-selected>
+                                  <p class="pf-c-form__helper-text">
+                                      ${msg(
+                                          "Stages used to configure Authenticator when user doesn't have any compatible devices. After this configuration Stage passes, the user is not prompted again.",
+                                      )}
+                                  </p>
+                                  <p class="pf-c-form__helper-text">
+                                      ${msg(
+                                          "When multiple stages are selected, the user can choose which one they want to enroll.",
+                                      )}
+                                  </p>
+                              </ak-form-element-horizontal>
+                          `
+                        : html``}
+                </div>
+            </ak-form-group>
+            <ak-form-group .expanded=${true}>
+                <span slot="header"> ${msg("WebAuthn-specific settings")} </span>
+                <div slot="body" class="pf-c-form">
                     <ak-form-element-horizontal
                         label=${msg("WebAuthn User verification")}
                         ?required=${true}
@@ -210,41 +236,40 @@ export class AuthenticatorValidateStageForm extends BaseStageForm<AuthenticatorV
                         >
                         </ak-radio>
                     </ak-form-element-horizontal>
-                    ${this.showConfigurationStages
-                        ? html`
-                              <ak-form-element-horizontal
-                                  label=${msg("Configuration stages")}
-                                  name="configurationStages"
-                              >
-                                  <select class="pf-c-form-control" multiple>
-                                      ${this.stages?.results.map((stage) => {
-                                          const selected = Array.from(
-                                              this.instance?.configurationStages || [],
-                                          ).some((su) => {
-                                              return su == stage.pk;
-                                          });
-                                          return html`<option
-                                              value=${ifDefined(stage.pk)}
-                                              ?selected=${selected}
-                                          >
-                                              ${stage.name} (${stage.verboseName})
-                                          </option>`;
-                                      })}
-                                  </select>
-                                  <p class="pf-c-form__helper-text">
-                                      ${msg(
-                                          "Stages used to configure Authenticator when user doesn't have any compatible devices. After this configuration Stage passes, the user is not prompted again.",
-                                      )}
-                                  </p>
-                                  <p class="pf-c-form__helper-text">
-                                      ${msg(
-                                          "When multiple stages are selected, the user can choose which one they want to enroll.",
-                                      )}
-                                  </p>
-                              </ak-form-element-horizontal>
-                          `
-                        : html``}
+                    <ak-form-element-horizontal
+                        label=${msg("WebAuthn Device type restrictions")}
+                        name="webauthnAllowedDeviceTypes"
+                    >
+                        <ak-dual-select-provider
+                            .provider=${authenticatorWebauthnDeviceTypesListProvider}
+                            .selected=${(this.instance?.webauthnAllowedDeviceTypesObj ?? []).map(
+                                deviceTypeRestrictionPair,
+                            )}
+                            available-label="${msg("Available Device types")}"
+                            selected-label="${msg("Selected Device types")}"
+                        ></ak-dual-select-provider>
+                        <p class="pf-c-form__helper-text">
+                            ${msg(
+                                "Optionally restrict which WebAuthn device types may be used. When no device types are selected, all devices are allowed.",
+                            )}
+                        </p>
+                        <ak-alert ?inline=${true}>
+                            ${
+                                /* TODO: Remove this after 2024.6..or maybe later? */
+                                msg(
+                                    "This restriction only applies to devices created in authentik 2024.4 or later.",
+                                )
+                            }
+                        </ak-alert>
+                    </ak-form-element-horizontal>
                 </div>
-            </ak-form-group>`;
+            </ak-form-group>
+        `;
+    }
+}
+
+declare global {
+    interface HTMLElementTagNameMap {
+        "ak-stage-authenticator-validate-form": AuthenticatorValidateStageForm;
     }
 }

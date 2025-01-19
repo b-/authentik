@@ -57,7 +57,6 @@ class OAuthSourceSerializer(SourceSerializer):
         """Get source's type configuration"""
         return SourceTypeSerializer(instance.source_type).data
 
-    # pylint: disable=too-many-locals
     def validate(self, attrs: dict) -> dict:
         session = get_http_session()
         source_type = registry.find_type(attrs["provider_type"])
@@ -71,7 +70,7 @@ class OAuthSourceSerializer(SourceSerializer):
                 well_known_config.raise_for_status()
             except RequestException as exc:
                 text = exc.response.text if exc.response else str(exc)
-                raise ValidationError({"oidc_well_known_url": text})
+                raise ValidationError({"oidc_well_known_url": text}) from None
             config = well_known_config.json()
             if "issuer" not in config:
                 raise ValidationError({"oidc_well_known_url": "Invalid well-known configuration"})
@@ -97,7 +96,7 @@ class OAuthSourceSerializer(SourceSerializer):
                 jwks_config.raise_for_status()
             except RequestException as exc:
                 text = exc.response.text if exc.response else str(exc)
-                raise ValidationError({"oidc_jwks_url": text})
+                raise ValidationError({"oidc_jwks_url": text}) from None
             config = jwks_config.json()
             attrs["oidc_jwks"] = config
 
@@ -117,6 +116,7 @@ class OAuthSourceSerializer(SourceSerializer):
     class Meta:
         model = OAuthSource
         fields = SourceSerializer.Meta.fields + [
+            "group_matching_mode",
             "provider_type",
             "request_token_url",
             "authorization_url",
@@ -131,7 +131,13 @@ class OAuthSourceSerializer(SourceSerializer):
             "oidc_jwks_url",
             "oidc_jwks",
         ]
-        extra_kwargs = {"consumer_secret": {"write_only": True}}
+        extra_kwargs = {
+            "consumer_secret": {"write_only": True},
+            "request_token_url": {"allow_blank": True},
+            "authorization_url": {"allow_blank": True},
+            "access_token_url": {"allow_blank": True},
+            "profile_url": {"allow_blank": True},
+        }
 
 
 class OAuthSourceFilter(FilterSet):
@@ -153,6 +159,7 @@ class OAuthSourceFilter(FilterSet):
             "enrollment_flow",
             "policy_engine_mode",
             "user_matching_mode",
+            "group_matching_mode",
             "provider_type",
             "request_token_url",
             "authorization_url",
